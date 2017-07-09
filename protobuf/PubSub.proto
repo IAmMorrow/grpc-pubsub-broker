@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+service Subscriber {
+  rpc Authenticate(Identity) returns (Identity) {}
+  rpc Subscribe(SubscribeRequest) returns (Subscription) {}
+  rpc Unsubscribe(SubscribeRequest) returns (Subscription) {}
+  rpc Pull(Identity) returns (stream Message) {}
+}
+
+service Publisher {
+  rpc Publish(PublishRequest) returns (PublishResponse) {}
+}
+
+message Identity {
+  string name = 1;
+}
+
+message Message {
+  bytes data = 1;
+  map<string, string> attributes = 2;
+  string id = 3;
+}
+
+message PublishRequest {
+  string key = 1;
+  repeated Message messages = 2;
+}
+
+message PublishResponse {
+  repeated string message_ids = 1;
+}
+
+message SubscribeRequest {
+  Identity identity = 1;
+  Subscription subscription = 2;
+}
+
+message Subscription {
+  string key = 1;
+}
