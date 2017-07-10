@@ -2,22 +2,13 @@ package main
 
 import (
 	"errors"
-	"flag"
-	"fmt"
-	"net"
-	pb "pubsub"
+	pb "github.com/weackd/grpc-pubsub-broker/protobuf"
 	"sync"
 	"math/rand"
 
 	"golang.org/x/net/context"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/grpclog"
+	"google.golang.org/grpc/grpclog"	
 )
-
-var (
-	port = flag.Int("port", 10000, "The server port")
-)
-
 
 type ClientData struct {
 	identity *pb.Identity
@@ -219,10 +210,6 @@ func (this *ServerContext) Pull(identity *pb.Identity, stream pb.Subscriber_Pull
 	client.mutex.Unlock()
 
 	<-client.stop
-//	for {
-//		time.Sleep(1000000)
-//	}
-
 	return nil
 }
 
@@ -234,23 +221,9 @@ func (this *ServerContext) Publish(ctx context.Context, request *pb.PublishReque
 	return &pb.PublishResponse{}, nil
 }
 
-func newServer() *ServerContext {
+func newServerContext() *ServerContext {
 	s := new(ServerContext)
 	s.topics = make(map[string]*MessageTopic)
 	return s
 }
 
-func main() {
-	flag.Parse()
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
-	if err != nil {
-		grpclog.Fatalf("failed to listen: %v", err)
-	}
-	var opts []grpc.ServerOption
-
-	grpcServer := grpc.NewServer(opts...)
-	context := newServer()
-	pb.RegisterSubscriberServer(grpcServer, context)
-	pb.RegisterPublisherServer(grpcServer, context)
-	grpcServer.Serve(lis)
-}
