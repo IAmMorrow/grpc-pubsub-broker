@@ -4,7 +4,7 @@ import (
 	"flag"
 	"net"
 	"fmt"
-	pb "pubsub"
+	pb "github.com/weackd/grpc-pubsub-broker/protobuf"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/grpclog"
 )

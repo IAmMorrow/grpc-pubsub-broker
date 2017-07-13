@@ -1,13 +1,12 @@
 package main
 
 import (
-	"context"
 	"flag"
 	"io/ioutil"
 	"time"
 
-	pb "pubsub"
-
+	pb "github.com/weackd/grpc-pubsub-broker/protobuf"
+	publib "github.com/weackd/grpc-pubsub-broker/publisher/publib"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/grpclog"
 )
@@ -20,27 +19,11 @@ var (
 	file               = flag.String("file", "", "Input file")
 )
 
-// Publish(ctx context.Context, in *PublishRequest, opts ...grpc.CallOption) (*PublishResponse, error)
-
-func Publish(client pb.PublisherClient, key string, msg *pb.Message) {
-	//grpclog.Printf("Publishing Message (%s, %s)", key, msg.Data)
-
-	request := &pb.PublishRequest{Key: key, Messages: []*pb.Message{msg}}
-	_, error := client.Publish(context.Background(), request)
-	if error != nil {
-		grpclog.Printf("Error publishing")
-
-	}
-
-}
-
 func main() {
-
 	flag.Parse()
 	var opts []grpc.DialOption
 
 	opts = append(opts, grpc.WithInsecure())
-	grpclog.Printf("Publishing Message %d", *frequency)
 
 	conn, err := grpc.Dial(*serverAddr, opts...)
 	if err != nil {
@@ -72,13 +55,13 @@ func main() {
 	for {
 		if fileContent == nil {
 			for _, value := range flag.Args() {
-				Publish(client, *topic, &pb.Message{Data: []byte(value)})
+				publib.Publish(client, *topic, &pb.Message{Data: []byte(value)})
 				speed += 1
 				size += int(len(value))
 				time.Sleep(time.Duration(*frequency))
 			}
 		} else {
-			Publish(client, *topic, &pb.Message{Data: fileContent})
+			publib.Publish(client, *topic, &pb.Message{Data: fileContent})
 			speed += 1
 			size += int(len(fileContent))
 			time.Sleep(time.Duration(*frequency))
