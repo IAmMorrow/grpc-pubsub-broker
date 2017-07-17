@@ -5,15 +5,14 @@ import (
 	pb "github.com/weackd/grpc-pubsub-broker/protobuf"
 	"sync"
 	"math/rand"
-
+	"fmt"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc/grpclog"	
 )
 
 type ClientData struct {
 	identity *pb.Identity
-	stream pb.Subscriber_PullServer
-	stop chan struct{}
+	channel chan *pb.Message
 	mutex   sync.Mutex
 	connected bool
 }
@@ -21,6 +20,17 @@ type ClientData struct {
 type ClientRegistry struct {
 	mutex   sync.Mutex
 	clients []*ClientData
+}
+
+func (this *ServerContext) Stop() {
+	for _, client := range this.clients {
+		
+		client.mutex.Lock()
+		close(client.channel)
+		client.connected = false
+		fmt.Printf("Closed client")
+		client.mutex.Unlock()
+	}
 }
 
 var letterRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
@@ -49,7 +59,7 @@ func (this *ClientRegistry) Register(identity *pb.Identity) {
 	this.mutex.Lock()
 	newClient := new(ClientData)
 	newClient.identity = identity
-	newClient.stop = make(chan struct{})
+	newClient.channel = make(chan *pb.Message)
 	newClient.connected = false
 	this.clients = append(this.clients, newClient)
 	this.mutex.Unlock()
@@ -107,7 +117,7 @@ func (this *MessageTopic) Spread(message *pb.Message) {
 	for _, client := range this.subscriptions {
 		client.mutex.Lock()
 		if (client.connected == true) {
-			client.stream.Send(message)
+			client.channel <- message
 		}
 		client.mutex.Unlock()
 	}
@@ -204,12 +214,14 @@ func (this *ServerContext) Pull(identity *pb.Identity, stream pb.Subscriber_Pull
 
 	grpclog.Printf("Opening stream for %s", identity.Name)
 
-	client.mutex.Lock()
-	client.stream = stream
 	client.connected = true
-	client.mutex.Unlock()
+	for msg := range client.channel {
+		stream.Send(msg)
+	}
 
-	<-client.stop
+	grpclog.Printf("Closing stream for %s", identity.Name)
+
+	
 	return nil
 }
 
@@ -226,4 +238,3 @@ func newServerContext() *ServerContext {
 	s.topics = make(map[string]*MessageTopic)
 	return s
 }
-
