@@ -51,7 +51,6 @@ func main() {
 		}
 	}(&size, &speed)
 
-	// Looking for a valid feature
 	for {
 		if fileContent == nil {
 			for _, value := range flag.Args() {

@@ -1,13 +1,15 @@
 package main
 
 import (
+	"fmt"
+	"net"
 	"errors"
 	pb "github.com/weackd/grpc-pubsub-broker/protobuf"
 	"sync"
 	"math/rand"
-	"fmt"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc/grpclog"	
+	"google.golang.org/grpc"
 )
 
 type ClientData struct {
@@ -23,12 +25,10 @@ type ClientRegistry struct {
 }
 
 func (this *ServerContext) Stop() {
-	for _, client := range this.clients {
-		
+	for _, client := range this.clients {		
 		client.mutex.Lock()
 		close(client.channel)
 		client.connected = false
-		fmt.Printf("Closed client")
 		client.mutex.Unlock()
 	}
 }
@@ -214,10 +214,20 @@ func (this *ServerContext) Pull(identity *pb.Identity, stream pb.Subscriber_Pull
 
 	grpclog.Printf("Opening stream for %s", identity.Name)
 
+	client.mutex.Lock()
 	client.connected = true
+	client.mutex.Unlock()
+	
 	for msg := range client.channel {
-		stream.Send(msg)
+		if err := stream.Send(msg); err != nil {
+			return err
+		}
+		
 	}
+
+	client.mutex.Lock()
+	client.connected = false
+	client.mutex.Unlock()
 
 	grpclog.Printf("Closing stream for %s", identity.Name)
 
@@ -231,6 +241,36 @@ func (this *ServerContext) Publish(ctx context.Context, request *pb.PublishReque
 		topic.Spread(message)
 	}
 	return &pb.PublishResponse{}, nil
+}
+
+type PubSubServer struct {
+	context	*ServerContext
+	server	*grpc.Server
+}
+
+func (this *PubSubServer) Stop() {
+	this.context.Stop()
+	this.server.GracefulStop()
+}
+
+func (this *PubSubServer) Start(port string) {
+	var opts []grpc.ServerOption
+
+	lis, err := net.Listen("tcp", ":" + port)
+	if err != nil {
+		fmt.Print(err.Error())
+		return
+	}
+	this.server = grpc.NewServer(opts...)
+	pb.RegisterSubscriberServer(this.server, this.context)
+	pb.RegisterPublisherServer(this.server, this.context)
+	this.server.Serve(lis)
+}
+
+func newPubSubServer() *PubSubServer {
+	s := new(PubSubServer)
+	s.context = newServerContext()
+	return s
 }
 
 func newServerContext() *ServerContext {

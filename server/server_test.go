@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 	"io"
-	"net"
+	"time"
 	"fmt"
 	"sync"
 	pb "github.com/weackd/grpc-pubsub-broker/protobuf"
@@ -80,37 +80,35 @@ func (this *Publisher) Publish(key string, msg string) error {
 type TestContext struct {
 	subscribers	[]Subscriber
 	publishers	[]Publisher
-	server		*grpc.Server
 	serverPort	string
-	serverContext   *ServerContext
+	server		*PubSubServer
 }
 
 func (this *TestContext) Stop() {
-	this.serverContext.Stop()
-	for _, pub := range this.publishers {
-		pub.conn.Close()
-	}
+
+	time.Sleep(1 * time.Second)
+
 	for _, sub := range this.subscribers {
 		sub.conn.Close()
 	}
-	this.server.GracefulStop()
+
+	time.Sleep(1 * time.Second)
+
+	for _, pub := range this.publishers {
+		pub.conn.Close()
+	}
+
+	time.Sleep(1 * time.Second)
+	this.server.Stop()
+
+//	this.server.GracefulStop()
 }
 
 func (this *TestContext) StartServer(port string) error {
-	lis, err := net.Listen("tcp", port)
-	fmt.Printf("OPEN PORT %s\n", port)
 	this.serverPort = port
 
-	if err != nil {
-		return err
-	}
-
-	this.server = grpc.NewServer()
-	context := newServerContext()
-	this.serverContext = context
-	pb.RegisterSubscriberServer(this.server, context)
-	pb.RegisterPublisherServer(this.server, context)
-	go this.server.Serve(lis)
+	this.server = newPubSubServer()	
+	go this.server.Start(port)
 	return nil
 }
 
@@ -120,7 +118,7 @@ func (this *TestContext) AddPub(keys []string, messages []string) error {
 
 	opts = append(opts, grpc.WithInsecure())
 	
-	conn, err := grpc.Dial(this.serverPort, opts...)
+	conn, err := grpc.Dial(":"+this.serverPort, opts...)
 	if err != nil {
 		return err
 	}
@@ -136,7 +134,7 @@ func (this *TestContext) AddSub(keys []string) error {
 
 	opts = append(opts, grpc.WithInsecure())
 	
-	conn, err := grpc.Dial(this.serverPort, opts...)
+	conn, err := grpc.Dial(":" + this.serverPort, opts...)
 	if err != nil {
 		return err
 	}
@@ -193,6 +191,8 @@ func (this *TestContext) StressTest(b *testing.B, msgLimit int, subNb int, pubNb
 			y = (y + 1) % len(messages)
 		}
 	}
+	b.StopTimer()
+	
 	b.Logf("Received %d messages with %d subscribers", received, subNb)
 }
 
@@ -201,7 +201,7 @@ func BenchmarkServer1p1s(b *testing.B) {
 	received = 0
 	var test TestContext
 
-	if err := test.StartServer(":35000"); err != nil {
+	if err := test.StartServer("35000"); err != nil {
 		b.Fatalf("Couldn't start server: %s", err.Error())
 	}
 
@@ -220,13 +220,13 @@ func BenchmarkServer1p1s(b *testing.B) {
 	test.Stop()
 }
 
-/*
+
 func BenchmarkServer1p10s(b *testing.B) {
 	sent = 0
 	received = 0
 	var test TestContext
 
-	if err := test.StartServer(":35000"); err != nil {
+	if err := test.StartServer("35000"); err != nil {
 		b.Fatalf("Couldn't start server: %s", err.Error())
 	}
 
@@ -249,7 +249,7 @@ func BenchmarkServer40000_10p100s(b *testing.B) {
 	received = 0
 	var test TestContext
 
-	if err := test.StartServer(":35000"); err != nil {
+	if err := test.StartServer("35000"); err != nil {
 		b.Fatalf("Couldn't start server: %s", err.Error())
 	}
 
@@ -267,4 +267,23 @@ func BenchmarkServer40000_10p100s(b *testing.B) {
 	test.Stop()
 }
 
-*/
+func BenchmarkServer5000_10p5s_3MB_MESSAGE(b *testing.B) {
+	sent = 0
+	received = 0
+	var test TestContext
+
+	if err := test.StartServer("35000"); err != nil {
+		b.Fatalf("Couldn't start server: %s", err.Error())
+	}
+
+	topics := []string {
+		"test",
+		"test2"}
+	
+	messages := []string {
+		generateRandomString(3000000)}
+
+	test.StressTest(b, 5000, 5, 10, topics, messages)
+	fmt.Printf("DONE !\n")
+	test.Stop()
+}
